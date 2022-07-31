@@ -1,0 +1,67 @@
+name: execute cloudify command from PR comment
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  check-for-approval:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.comment.body == 'cfy terraform apply'}}
+    environment: manager-oversight
+    steps:
+      - id: echo_comment
+        run: |
+          echo "${{ github.event.comment.body }}"
+  run-command:
+    runs-on: ubuntu-latest
+    needs: check-for-approval
+    if: ${{ always() && !(contains(needs.*.result, 'failure')) }}
+    steps:
+      - id: handle_comment
+        name: handle comment on PR
+        uses: cloudify-cosmo/cloudify-comment-action@master
+        with:
+          comment: "${{ github.event.comment.body }}"
+          github_token: "${{ secrets.GITHUB_TOKEN }}"
+          environment-name: "terraform-test"
+          labels: test_label:just_for_fun
+          module-file: https://github.com/ahmadiesa-abu/tf-source/archive/refs/heads/master.zip
+          module-source-path: template/modules/public_vm
+          variables-file: variables.yaml
+      - id: print_result
+        run: |
+          echo "${{ steps.handle_comment.outputs.result }}"
+
+  install_apps:
+    runs-on: ubuntu-latest
+    needs: run-command
+    if: ${{ github.event.comment.body == 'cfy terraform apply'}}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Upload blueprint
+        id: upload-blueprint
+        uses: cloudify-cosmo/cli-action@v1.2
+        with:
+          command: blueprints upload blueprint_apps.yaml -b env-apps  -t ${{ secrets.CLOUDIFY_TENANT }}
+
+      - name: get_deployment_id
+        id: check_environment
+        uses: cloudify-cosmo/environment-data-using-labels-action@v1.2
+        with:
+            environment-name: "terraform-test"
+            labels: test_label:just_for_fun
+
+      - name: Install or update EAAS
+        uses: cloudify-cosmo/install-or-update-action@v1.2
+        with:
+          environment-name: ${{fromJson(steps.check_environment.outputs.environment-data)[0].deployment_id}}
+          blueprint-id: env-apps
+          delete-old-blueprint: false
+
+env:
+  CLOUDIFY_HOST: ${{ secrets.CLOUDIFY_HOST }}
+  CLOUDIFY_USERNAME: ${{ secrets.CLOUDIFY_USERNAME }}
+  CLOUDIFY_PASSWORD: ${{ secrets.CLOUDIFY_PASSWORD }}
+  CLOUDIFY_TENANT: ${{ secrets.CLOUDIFY_TENANT }}
+  CLOUDIFY_SSL: ${{ secrets.CLOUDIFY_SSL }}

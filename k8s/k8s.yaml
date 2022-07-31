@@ -1,0 +1,78 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - http://cloudify.co/spec/cloudify/5.1.1/types.yaml
+  - plugin:cloudify-fabric-plugin
+
+node_templates:
+
+  docker:
+    type: cloudify.nodes.Root
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: k8s/scripts/install-docker.sh
+            fabric_env: &fabric_env
+              host: { get_attribute: [ terraform_module, resources, eip, instances, 0, attributes, public_ip ] }
+              user: centos
+              connect_kwargs:
+                pkey: { get_secret: agent_key_private }
+        configure:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: k8s/scripts/configure-docker.sh
+            fabric_env: *fabric_env
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: k8s/scripts/start-docker.sh
+            fabric_env: *fabric_env
+        stop:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: k8s/scripts/stop-docker.sh
+            fabric_env: *fabric_env
+    relationships:
+      - target: terraform_module
+        type: cloudify.relationships.depends_on
+
+  minikube:
+    type: cloudify.nodes.Root
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: k8s/scripts/install-minikube.sh
+            fabric_env: *fabric_env
+        configure:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: k8s/scripts/forward-port-to-minikube.sh
+            fabric_env: *fabric_env
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: k8s/scripts/start-minikube.sh
+            fabric_env: *fabric_env
+            process:
+              env:
+                HOST_VM_IP: { get_attribute: [ terraform_module, resources, eip, instances, 0, attributes, public_ip ] }
+        poststart:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: k8s/scripts/load-config.py
+            fabric_env: *fabric_env
+            process:
+              env:
+                HOST_VM_IP: { get_attribute: [ terraform_module, resources, eip, instances, 0, attributes, public_ip ] }
+        stop:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: k8s/scripts/stop-minikube.sh
+            fabric_env: *fabric_env
+    relationships:
+      - target: docker
+        type: cloudify.relationships.depends_on

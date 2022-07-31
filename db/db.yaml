@@ -1,0 +1,40 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - http://cloudify.co/spec/cloudify/5.1.1/types.yaml
+  - plugin:cloudify-fabric-plugin
+
+node_templates:
+
+  database:
+    type: cloudify.nodes.Root
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: db/scripts/install-psql.sh
+            fabric_env: &fabric_env
+              host: { get_attribute: [ terraform_module, resources, eip, instances, 0, attributes, public_ip ] }
+              user: centos
+              connect_kwargs:
+                pkey: { get_secret: agent_key_private }
+        configure:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: db/scripts/configure-psql.sh
+            fabric_env: *fabric_env
+            master_username: psqladmin
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: db/scripts/start-psql.sh
+            fabric_env: *fabric_env
+        stop:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path: db/scripts/stop-psql.sh
+            fabric_env: *fabric_env
+    relationships:
+      - target: terraform_module
+        type: cloudify.relationships.depends_on

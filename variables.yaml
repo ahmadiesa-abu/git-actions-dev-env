@@ -1,0 +1,9 @@
+env_name: ahmad
+access_key: { get_secret: aws_access_key_id }
+secret_key: { get_secret: aws_secret_access_key }
+aws_region: us-east-1
+aws_zone: us-east-1a
+admin_user: centos
+aws_instance_type: t2.medium
+deployment_id: { get_sys: [deployment, id] }
+admin_key_public: { get_secret: agent_key_public }

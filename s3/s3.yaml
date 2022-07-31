@@ -1,0 +1,115 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - http://cloudify.co/spec/cloudify/5.1.1/types.yaml
+  - plugin:cloudify-fabric-plugin
+
+node_types:
+  types.minio.Server:
+    derived_from: cloudify.nodes.Root
+    properties:
+      access_key_id:
+        type: string
+        default: { get_secret: aws_access_key_id }
+      secret_access_key:
+        type: string
+        default: { get_secret: aws_secret_access_key }
+      data_dir:
+        type: string
+        default: /var/minio/data
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: s3/scripts/install-minio-server.sh
+            fabric_env:
+              default: &fabric_env
+                host: { get_attribute: [ terraform_module, resources, eip, instances, 0, attributes, public_ip ] }
+                user: centos
+                connect_kwargs:
+                  pkey: { get_secret: agent_key_private }
+        configure:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: s3/scripts/configure-minio-server.sh
+            fabric_env:
+              default: *fabric_env
+        start:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: s3/scripts/start-minio-server.sh
+            fabric_env:
+              default: *fabric_env
+
+  types.minio.Client:
+    derived_from: cloudify.nodes.Root
+    properties:
+      access_key_id:
+        type: string
+        default: { get_secret: aws_access_key_id }
+      secret_access_key:
+        type: string
+        default: { get_secret: aws_secret_access_key }
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: s3/scripts/install-minio-client.sh
+            fabric_env:
+              default: *fabric_env
+        configure:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: s3/scripts/configure-minio-client.sh
+            fabric_env:
+              default: *fabric_env
+
+  types.minio.Bucket:
+    derived_from: cloudify.nodes.Root
+    properties:
+      bucket_name:
+        type: string
+      bucket_region:
+        type: string
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: fabric.fabric_plugin.tasks.run_script
+          inputs:
+            script_path:
+              default: s3/scripts/create-bucket.sh
+            fabric_env:
+              default: *fabric_env
+
+node_templates:
+
+
+  minio-server:
+    type: types.minio.Server
+    relationships:
+      - target: terraform_module
+        type: cloudify.relationships.depends_on
+
+  minio-client:
+    type: types.minio.Client
+    relationships:
+      - target: minio-server
+        type: cloudify.relationships.depends_on
+
+  minio-bucket:
+    type: types.minio.Bucket
+    properties:
+      bucket_name: awsdevsmallbucket
+      bucket_region: us-east-1
+    relationships:
+      - target: minio-server
+        type: cloudify.relationships.contained_in
+      - target: minio-client
+        type: cloudify.relationships.depends_on
