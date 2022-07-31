@@ -36,14 +36,30 @@ jobs:
     needs: run-command
     if: ${{ github.event.comment.body == 'cfy terraform apply'}}
     steps:
+      - name: Get PR SHA
+        id: sha
+        uses: actions/github-script@v4
+        with:
+          result-encoding: string
+          script: |
+            const { owner, repo, number } = context.issue;
+            const pr = await github.pulls.get({
+              owner,
+              repo,
+              pull_number: number,
+            });
+            return pr.data.head.sha
+
       - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          ref: ${{ steps.sha.outputs.result }}
 
       - name: Upload blueprint
         id: upload-blueprint
         uses: cloudify-cosmo/cli-action@v1.2
         with:
-          command: blueprints upload blueprint_apps.yaml -b env-apps  -t ${{ secrets.CLOUDIFY_TENANT }}
+          command: blueprints upload blueprint_apps.yaml -b env-apps-${{ github.run_id }}
 
       - name: get_deployment_id
         id: check_environment
@@ -56,8 +72,50 @@ jobs:
         uses: cloudify-cosmo/install-or-update-action@v1.2
         with:
           environment-name: ${{fromJson(steps.check_environment.outputs.environment-data)[0].deployment_id}}
-          blueprint-id: env-apps
-          delete-old-blueprint: false
+          blueprint-id: env-apps-${{ github.run_id }}
+          delete-old-blueprint: true
+
+
+      - name: Get Environemnt Capabilities
+        id: check_environment_after_update
+        uses: cloudify-cosmo/cli-action@v1.2
+        with:
+          command: deployments capabilities ${{fromJson(steps.check_environment.outputs.environment-data)[0].deployment_id}}
+
+      - name: format environemnt capabilites
+        id: get_env_capabilities
+        shell: python
+        run: |
+          import json
+          capabilities = """${{steps.check_environment_after_update.outputs.cli-output}}"""
+          capabilities = capabilities.decode()
+          capabilities = capabilities.replace('%','%25')
+          capabilities = capabilities.replace('\n','%0A')
+          capabilities = capabilities.replace('\r','%0D')
+          print ('::set-output name=capabilities::{0}'.format(capabilities))
+      - name: Add plan comment
+        uses: actions/github-script@v3
+        env:
+          CAPABLITIES: "Environment Capablities \n${{ steps.get_env_capabilities.outputs.capabilities }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Environment Capablities
+            
+            <details><summary>Show Capablities</summary>
+            
+            \`\`\`\n
+            ${process.env.CAPABLITIES}
+            \`\`\`
+            
+            </details>`;
+            
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
 
 env:
   CLOUDIFY_HOST: ${{ secrets.CLOUDIFY_HOST }}
