@@ -87,7 +87,7 @@ jobs:
         shell: python
         run: |
           import json
-          capabilities = """${{steps.check_environment_after_update.outputs.cli-output}}"""
+          capabilities = ${{steps.check_environment_after_update.outputs.cli-output}}
           capabilities = capabilities.decode()
           capabilities = capabilities.replace('%','%25')
           capabilities = capabilities.replace('\n','%0A')
