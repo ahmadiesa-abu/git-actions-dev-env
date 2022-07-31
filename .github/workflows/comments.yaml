@@ -101,15 +101,15 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const output = `#### Environment Capablities
-
+            
             <details><summary>Show Capablities</summary>
-
+            
             \`\`\`\n
             ${process.env.CAPABLITIES}
             \`\`\`
-
+            
             </details>`;
-
+            
             github.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
