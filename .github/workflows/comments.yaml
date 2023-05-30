@@ -23,7 +23,7 @@ jobs:
           comment: "${{ github.event.comment.body }}"
           github_token: "${{ secrets.GITHUB_TOKEN }}"
           environment-name: "terraform-test"
-          labels: test_label:just_for_fun
+          labels: test_label:just_for_fun,obj-type:terraform
           module-file: https://github.com/ahmadiesa-abu/tf-source/archive/refs/heads/master.zip
           module-source-path: template/modules/public_vm
           variables-file: variables.yaml
